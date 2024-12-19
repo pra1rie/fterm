@@ -78,11 +78,6 @@ static inline struct value token_to_value(struct string tok) {
 }
 
 struct config init_config(char *path) {
-    if (parser.file) {
-        fclose(parser.file);
-        fprintf(stderr, "error: attempt to open different file mid-parsing\n");
-        exit(1);
-    }
     parser.file = fopen(path, "r");
     if (!parser.file) {
         fprintf(stderr, "error: could not open file '%s'\n", path);
