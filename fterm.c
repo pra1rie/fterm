@@ -56,6 +56,33 @@ static inline void lookup_config() {
     }
 }
 
+static inline void reload_config(Bool is_reload) {
+    if (is_reload) {
+        for (int i = 0; i < 16; ++i)
+            free(colors[i]);
+        free(title);
+        free(shell);
+        free(font);
+    }
+
+    lookup_config();
+    for (int i = 0; i < 16; ++i)
+        gdk_rgba_parse(palette+i, colors[i]);
+    GdkRGBA background = palette[0];
+    background.alpha = alpha;
+    cmd[0] = shell;
+    scale = 1.0;
+    gtk_window_set_default_size(GTK_WINDOW(wn), width, height);
+    gtk_window_set_title(GTK_WINDOW(wn), title);
+    vte_terminal_set_font(term, pango_font_description_from_string(font));
+    vte_terminal_set_font_scale(term, scale);
+    vte_terminal_set_bold_is_bright(term, TRUE);
+    vte_terminal_set_cursor_blink_mode(term, VTE_CURSOR_BLINK_OFF);
+    vte_terminal_set_colors(term, &palette[15], &background, palette, 16);
+    gtk_widget_set_visual(wn, gdk_screen_get_rgba_visual(gtk_widget_get_screen(wn)));
+    gtk_widget_override_background_color(wn, GTK_STATE_FLAG_NORMAL, &background);
+}
+
 #define MOD(k) (e->keyval == k && m == (GDK_CONTROL_MASK|GDK_SHIFT_MASK))
 static gboolean keypress(GtkWidget *w, GdkEventKey *e) {
     GdkModifierType m = e->state & gtk_accelerator_get_default_mod_mask();
@@ -69,6 +96,8 @@ static gboolean keypress(GtkWidget *w, GdkEventKey *e) {
         vte_terminal_set_font_scale(term, scale -= 0.1);
     else if (MOD(GDK_KEY_BackSpace))
         vte_terminal_set_font_scale(term, scale = 1.0);
+    else if (MOD(GDK_KEY_F5))
+        reload_config(TRUE);
     else return FALSE;
     return TRUE;
 }
@@ -89,25 +118,15 @@ int main(int argc, char **argv) {
         }
     }
 
-    lookup_config();
-    cmd[0] = shell; // uwu
     gtk_init(&argc, &argv);
     wn = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_default_size(GTK_WINDOW(wn), width, height);
-    gtk_window_set_title(GTK_WINDOW(wn), title);
     term = VTE_TERMINAL(vte_terminal_new());
     gtk_container_add(GTK_CONTAINER(wn), GTK_WIDGET(term));
-    for (int i = 0; i < 16; ++i) gdk_rgba_parse(palette+i, colors[i]);
-    GdkRGBA background = palette[0]; background.alpha = alpha;
+
+    reload_config(FALSE);
     vte_terminal_spawn_async(term, VTE_PTY_DEFAULT, NULL, cmd, NULL,
-        G_SPAWN_DEFAULT, NULL, NULL, NULL, -1, NULL, NULL, NULL);
-    vte_terminal_set_font(term, pango_font_description_from_string(font));
-    vte_terminal_set_font_scale(term, scale);
-    vte_terminal_set_bold_is_bright(term, TRUE);
-    vte_terminal_set_cursor_blink_mode(term, VTE_CURSOR_BLINK_OFF);
-    vte_terminal_set_colors(term, &palette[15], &background, palette, 16);
-    gtk_widget_set_visual(wn, gdk_screen_get_rgba_visual(gtk_widget_get_screen(wn)));
-    gtk_widget_override_background_color(wn, GTK_STATE_FLAG_NORMAL, &background);
+            G_SPAWN_DEFAULT, NULL, NULL, NULL, -1, NULL, NULL, NULL);
+
     g_signal_connect(wn, "destroy", G_CALLBACK(gtk_main_quit), NULL);
     g_signal_connect(term, "child-exited", G_CALLBACK(gtk_main_quit), NULL);
     g_signal_connect(wn, "key-press-event", G_CALLBACK(keypress), NULL);
