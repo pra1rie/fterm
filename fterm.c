@@ -24,10 +24,16 @@ static char *colors[16] = {
 
 GtkWidget *wn;
 VteTerminal *term;
-GdkRGBA palette[16];
+GdkRGBA palette[16], background;
 char *config = NULL;
 char *xid = NULL;
 float scale = 1.0;
+
+static inline void set_alpha_scale(float alpha) {
+    background.alpha = alpha;
+    gtk_widget_override_background_color(wn, GTK_STATE_FLAG_NORMAL, &background);
+    vte_terminal_set_colors(term, &palette[15], &background, palette, 16);
+}
 
 static inline void parse_colors(struct config *cfg) {
     for (int i = 0; i < 16; ++i) {
@@ -68,8 +74,7 @@ static inline void reload_config(Bool is_reload) {
     lookup_config();
     for (int i = 0; i < 16; ++i)
         gdk_rgba_parse(palette+i, colors[i]);
-    GdkRGBA background = palette[0];
-    background.alpha = alpha;
+    background = palette[0];
     cmd[0] = shell;
     scale = 1.0;
     gtk_window_set_default_size(GTK_WINDOW(wn), width, height);
@@ -78,9 +83,8 @@ static inline void reload_config(Bool is_reload) {
     vte_terminal_set_font_scale(term, scale);
     vte_terminal_set_bold_is_bright(term, TRUE);
     vte_terminal_set_cursor_blink_mode(term, VTE_CURSOR_BLINK_OFF);
-    vte_terminal_set_colors(term, &palette[15], &background, palette, 16);
     gtk_widget_set_visual(wn, gdk_screen_get_rgba_visual(gtk_widget_get_screen(wn)));
-    gtk_widget_override_background_color(wn, GTK_STATE_FLAG_NORMAL, &background);
+    set_alpha_scale(alpha);
 }
 
 #define MOD(k) (e->keyval == k && m == (GDK_CONTROL_MASK|GDK_SHIFT_MASK))
@@ -98,6 +102,12 @@ static gboolean keypress(GtkWidget *w, GdkEventKey *e) {
         vte_terminal_set_font_scale(term, scale = 1.0);
     else if (MOD(GDK_KEY_F5))
         reload_config(TRUE);
+    else if (MOD(GDK_KEY_less))
+        set_alpha_scale(background.alpha > 0? background.alpha - 0.05 : 0);
+    else if (MOD(GDK_KEY_greater))
+        set_alpha_scale(background.alpha < 1? background.alpha += 0.05 : 1);
+    else if (MOD(GDK_KEY_colon))
+        set_alpha_scale(alpha);
     else return FALSE;
     return TRUE;
 }
