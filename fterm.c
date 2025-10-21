@@ -8,10 +8,11 @@
 #include "parser.h"
 
 // uwurawrxd
+static int using_default = 0;
 static int width = 900, height = 500;
 static char *title = "Terminal";
-static char *shell = "/usr/bin/sh";
-static char *font = "monospace 10";
+static char *shell = "/usr/bin/bash";
+static char *font = "monospace 15";
 static float alpha = 1.0;
 static char *cmd[32] = {0};
 static char *colors[16] = {
@@ -57,12 +58,15 @@ static inline void lookup_config() {
         font = strdup(GET_VAR_OR(&cfg, "font", T_STR, font).as_str);
         parse_colors(&cfg);
         free_config(&cfg);
+        using_default = 0;
     } else {
+        using_default = 1;
         fprintf(stderr, "error: could not find config file, using default values\n");
     }
 }
 
 static inline void reload_config(Bool is_reload) {
+    if (using_default) return;
     if (is_reload) {
         for (int i = 0; i < 16; ++i)
             free(colors[i]);
