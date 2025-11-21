@@ -7,6 +7,8 @@
 #include <unistd.h>
 #include "parser.h"
 
+#define FTERM_VERSION "fterm v0.2"
+
 // uwurawrxd
 static int using_default = 0;
 static int width = 900, height = 500;
@@ -31,8 +33,7 @@ char *xid = NULL;
 float scale = 1.0;
 
 static inline void set_alpha_scale(float alpha) {
-    background.alpha = alpha;
-    gtk_widget_override_background_color(wn, GTK_STATE_FLAG_NORMAL, &background);
+    background.alpha = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha; // god programmer
     vte_terminal_set_colors(term, &palette[15], &background, palette, 16);
 }
 
@@ -91,39 +92,58 @@ static inline void reload_config(Bool is_reload) {
     set_alpha_scale(alpha);
 }
 
-#define MOD(k) (e->keyval == k && m == (GDK_CONTROL_MASK|GDK_SHIFT_MASK))
+#define MODN(k) (e->keyval == k && m == (GDK_CONTROL_MASK))
+#define MODS(k) (e->keyval == k && m == (GDK_CONTROL_MASK|GDK_SHIFT_MASK))
 static gboolean keypress(GtkWidget *w, GdkEventKey *e) {
     GdkModifierType m = e->state & gtk_accelerator_get_default_mod_mask();
-    if (MOD(GDK_KEY_C))
+    if (MODS(GDK_KEY_C))
         vte_terminal_copy_clipboard_format(term, VTE_FORMAT_TEXT);
-    else if (MOD(GDK_KEY_V))
+    else if (MODS(GDK_KEY_V))
         vte_terminal_paste_clipboard(term);
-    else if (MOD(GDK_KEY_plus))
+    else if (MODN(GDK_KEY_equal))
         vte_terminal_set_font_scale(term, scale += 0.1);
-    else if (MOD(GDK_KEY_underscore))
+    else if (MODN(GDK_KEY_minus))
         vte_terminal_set_font_scale(term, scale -= 0.1);
-    else if (MOD(GDK_KEY_BackSpace))
+    else if (MODN(GDK_KEY_0))
         vte_terminal_set_font_scale(term, scale = 1.0);
-    else if (MOD(GDK_KEY_F5))
+    else if (MODN(GDK_KEY_F5))
         reload_config(TRUE);
-    else if (MOD(GDK_KEY_less))
-        set_alpha_scale(background.alpha > 0? background.alpha - 0.05 : 0);
-    else if (MOD(GDK_KEY_greater))
-        set_alpha_scale(background.alpha < 1? background.alpha += 0.05 : 1);
-    else if (MOD(GDK_KEY_colon))
+    else if (MODS(GDK_KEY_less))
+        set_alpha_scale(background.alpha - 0.05);
+    else if (MODS(GDK_KEY_greater))
+        set_alpha_scale(background.alpha + 0.05);
+    else if (MODS(GDK_KEY_question))
         set_alpha_scale(alpha);
     else return FALSE;
     return TRUE;
 }
 
+static void usage(const char *prgname) {
+    printf("usage: %s [flags] [command [args...]]\n", prgname);
+    printf("flags:\n");
+    printf("    -h, --help               show this help and exit\n");
+    printf("    -v, --version            print version information\n");
+    printf("    -c, --config path        load config file from path\n");
+    printf("    -w, --window window_id   embed fterm into another X11 window\n");
+    exit(0);
+}
+
+#define FLAG(F) (strcmp(argv[i], F) == 0)
+#define FLAGN(F, N) (strcmp(argv[i], F) == 0 && i+N < argc)
+
 int main(int argc, char **argv) {
     if (argc > 1) {
         for (int i = 1; i < argc; ++i) {
-            if (!strcmp(argv[i], "-c"))
+            if (FLAG("-h") || FLAG("--help")) {
+                usage(argv[0]);
+            } else if (FLAG("-v") || FLAG("--version")) {
+                printf("%s\n", FTERM_VERSION);
+                exit(0);
+            } else if (FLAGN("-c", 1) || FLAGN("--config", 1)) {
                 config = argv[++i];
-            else if (!strcmp(argv[i], "-w"))
+            } else if (FLAGN("-w", 1) || FLAGN("--window", 1)) {
                 xid = argv[++i];
-            else {
+            } else {
                 cmd[1] = "-c";
                 for (int j = i; j < MIN(argc, 30); ++j)
                     cmd[(j-i)+2] = argv[j];
