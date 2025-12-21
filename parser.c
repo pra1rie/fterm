@@ -4,51 +4,51 @@
 #include <ctype.h>
 #include "parser.h"
 
-static struct {
+struct _parser {
     FILE *file;
-} parser;
+};
 
-struct string {
+struct _string {
     int sz;
     char ptr[STRING_MAX];
 };
 
-static inline void strpush(struct string *a, char b) {
+static inline void strpush(struct _string *a, char b) {
     a->ptr[a->sz++] = b;
 }
 
-static char skip_space() {
-    char c = fgetc(parser.file);
-    while (c != EOF && isspace(c)) c = fgetc(parser.file);
+static char _skip_space(struct _parser *parser) {
+    char c = fgetc(parser->file);
+    while (c != EOF && isspace(c)) c = fgetc(parser->file);
     if (c == '#') {
-        while (c != EOF && c != '\n') c = fgetc(parser.file);
-        ungetc(c, parser.file);
-        return skip_space();
+        while (c != EOF && c != '\n') c = fgetc(parser->file);
+        ungetc(c, parser->file);
+        return _skip_space(parser);
     }
     return c;
 }
 
-static struct string next_token() {
-    struct string str = {0};
-    char c = skip_space();
+static struct _string _next_token(struct _parser *parser) {
+    struct _string str = {0};
+    char c = _skip_space(parser);
     if (c == EOF) return str;
     if (c == '\"') {
         do {
             strpush(&str, c);
-            c = fgetc(parser.file);
+            c = fgetc(parser->file);
         } while (c != '\"');
         strpush(&str, c);
         return str;
     }
     while (!(isspace(c) || c == '#')) {
         strpush(&str, c);
-        c = fgetc(parser.file);
+        c = fgetc(parser->file);
     }
-    ungetc(c, parser.file);
+    ungetc(c, parser->file);
     return str;
 }
 
-static inline char *type_to_cstr(char t) {
+static inline char *_type_to_cstr(char t) {
     switch (t) {
     case T_STR:  return "str";
     case T_INT:  return "int";
@@ -57,7 +57,7 @@ static inline char *type_to_cstr(char t) {
     }
 }
 
-static inline struct value token_to_value(struct string tok) {
+static inline struct value _token_to_value(struct _string tok) {
     struct value val = { T_NIL };
     if (tok.ptr[0] == '\"') {
         val.type = T_STR;
@@ -78,30 +78,47 @@ static inline struct value token_to_value(struct string tok) {
 }
 
 struct config init_config(char *path) {
-    parser.file = fopen(path, "r");
+    struct _parser parser = { .file = fopen(path, "r") };
     if (!parser.file) {
         fprintf(stderr, "error: could not open file '%s'\n", path);
         exit(1);
     }
 
     struct config cfg = {0};
-    struct string tok = next_token();
+    struct _string tok = _next_token(&parser);
     while (tok.sz) {
-        struct string prv = tok;
-        tok = next_token();
+        if (!strncmp("include", tok.ptr, tok.sz)) {
+            tok = _next_token(&parser);
+            struct value val = _token_to_value(tok);
+            if (val.type != T_STR) {
+                fprintf(stderr, "error: include expected path\n");
+                exit(1);
+            }
+            struct config inc = init_config(val.as_str);
+            for (int i = 0; i < inc.nvars; ++i) {
+                struct value v = inc.vars[i].value;
+                // here hoping the compiler won't try to optimize this out lmfao
+                if (v.type == T_STR) v.as_str = strdup(inc.vars[i].value.as_str);
+                set_var(&cfg, strdup(inc.vars[i].name), v);
+            }
+            free_config(&inc);
+            free(val.as_str);
+            continue;
+        }
+        struct _string prv = tok;
+        tok = _next_token(&parser);
         if (!tok.sz) break;
         if (!strncmp(tok.ptr, "=", tok.sz)) {
-            tok = next_token();
+            tok = _next_token(&parser);
             if (!tok.sz) {
                 fprintf(stderr, "error: unexpected EOF\n");
                 exit(1);
             }
-            set_var(&cfg, strndup(prv.ptr, prv.sz), token_to_value(tok));
+            set_var(&cfg, strndup(prv.ptr, prv.sz), _token_to_value(tok));
         }
     }
 
     fclose(parser.file);
-    parser.file = NULL;
     return cfg;
 }
 
@@ -139,7 +156,7 @@ struct value get_var_type(struct config *cfg, char *name, char type) {
     struct value val = get_var(cfg, name);
     if (val.type != type) {
         fprintf(stderr, "error: expected '%s' to be type '%s', but got '%s'\n",
-            name, type_to_cstr(type), type_to_cstr(val.type));
+            name, _type_to_cstr(type), _type_to_cstr(val.type));
         exit(1);
     }
     return val;
