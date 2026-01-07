@@ -1,13 +1,13 @@
-BINDIR = /usr/local/bin
+PREFIX = /usr/local
 
 all:
 	cc -O3 -o fterm *.c `pkg-config --libs --cflags gtk+-3.0 vte-2.91 x11`
 
 install: all
-	mkdir -p ${BINDIR}
-	install -s fterm ${BINDIR}
+	mkdir -p $(PREFIX)/bin
+	install -s fterm $(PREFIX)/bin
 
 uninstall:
-	rm ${BINDIR}/fterm
+	rm $(PREFIX)/bin/fterm
 
 .PHONY: all install uninstall
