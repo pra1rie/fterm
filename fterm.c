@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include "parser.h"
 
-#define FTERM_VERSION "fterm v0.2"
+#define FTERM_VERSION "fterm v0.3"
 
 // uwurawrxd
 static int using_default = 0;
@@ -23,7 +23,7 @@ static char *colors[16] = {
 };
 
 #define GET_VAR_OR(C, N, T, D) \
-    (get_var(C, N).type == T_NIL)? D : get_var_type(C, N, T)
+    (get_var_type(C, N, T).type == T_NIL)? D : get_var_type(C, N, T)
 
 GtkWidget *wn;
 VteTerminal *term;

@@ -72,19 +72,29 @@ static inline struct value _token_to_value(struct _string tok) {
         }
     } else {
         fprintf(stderr, "error: unknown value: %.*s\n", tok.sz, tok.ptr);
-        exit(1);
     }
     return val;
 }
 
+static inline void _include_file(struct config *cfg, char *path) {
+    struct config inc = init_config(path);
+    for (int i = 0; i < inc.nvars; ++i) {
+        struct value v = inc.vars[i].value;
+        // here hoping the compiler won't try to optimize this out lmfao
+        if (v.type == T_STR) v.as_str = strdup(inc.vars[i].value.as_str);
+        set_var(cfg, strdup(inc.vars[i].name), v);
+    }
+    free_config(&inc);
+}
+
 struct config init_config(char *path) {
     struct _parser parser = { .file = fopen(path, "r") };
+    struct config cfg = {0};
     if (!parser.file) {
         fprintf(stderr, "error: could not open file '%s'\n", path);
-        exit(1);
+        return cfg;
     }
 
-    struct config cfg = {0};
     struct _string tok = _next_token(&parser);
     while (tok.sz) {
         if (!strncmp("include", tok.ptr, tok.sz)) {
@@ -92,17 +102,10 @@ struct config init_config(char *path) {
             struct value val = _token_to_value(tok);
             if (val.type != T_STR) {
                 fprintf(stderr, "error: include expected path\n");
-                exit(1);
+            } else {
+                _include_file(&cfg, val.as_str);
+                free(val.as_str);
             }
-            struct config inc = init_config(val.as_str);
-            for (int i = 0; i < inc.nvars; ++i) {
-                struct value v = inc.vars[i].value;
-                // here hoping the compiler won't try to optimize this out lmfao
-                if (v.type == T_STR) v.as_str = strdup(inc.vars[i].value.as_str);
-                set_var(&cfg, strdup(inc.vars[i].name), v);
-            }
-            free_config(&inc);
-            free(val.as_str);
             continue;
         }
         struct _string prv = tok;
@@ -110,14 +113,12 @@ struct config init_config(char *path) {
         if (!tok.sz) break;
         if (!strncmp(tok.ptr, "=", tok.sz)) {
             tok = _next_token(&parser);
-            if (!tok.sz) {
+            if (tok.sz)
+                set_var(&cfg, strndup(prv.ptr, prv.sz), _token_to_value(tok));
+            else
                 fprintf(stderr, "error: unexpected EOF\n");
-                exit(1);
-            }
-            set_var(&cfg, strndup(prv.ptr, prv.sz), _token_to_value(tok));
         }
     }
-
     fclose(parser.file);
     return cfg;
 }
@@ -157,7 +158,7 @@ struct value get_var_type(struct config *cfg, char *name, char type) {
     if (val.type != type) {
         fprintf(stderr, "error: expected '%s' to be type '%s', but got '%s'\n",
             name, _type_to_cstr(type), _type_to_cstr(val.type));
-        exit(1);
+        return (struct value) { T_NIL };
     }
     return val;
 }
