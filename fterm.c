@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include "parser.h"
 
-#define FTERM_VERSION "fterm v0.3"
+#define FTERM_VERSION "fterm v0.4"
 
 char default_path[4096] = {0}; // $HOME/.config/fterm
 
