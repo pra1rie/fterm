@@ -9,6 +9,8 @@
 
 #define FTERM_VERSION "fterm v0.3"
 
+char default_path[4096] = {0}; // $HOME/.config/fterm
+
 // uwurawrxd
 static int using_default = 0;
 static int width = 900, height = 500;
@@ -45,10 +47,10 @@ static inline void parse_colors(struct config *cfg) {
     }
 }
 
-static inline void lookup_config() {
+static inline void lookup_config(void) {
     char config_path[STRING_MAX] = {0};
     if (config) sprintf(config_path, "%s", config);
-    else sprintf(config_path, "%s/.config/fterm/fterm.cfg", getenv("HOME"));
+    else sprintf(config_path, "%s/fterm.cfg", default_path);
     if (access(config_path, F_OK) == 0) {
         struct config cfg = init_config(config_path);
         width = GET_VAR_OR(&cfg, "width", T_INT, width).as_int;
@@ -92,6 +94,7 @@ static inline void reload_config(Bool is_reload) {
     set_alpha_scale(alpha);
 }
 
+// TODO: it'd be nice to be able to customize keybinds too
 #define MODN(k) (e->keyval == k && m == (GDK_CONTROL_MASK))
 #define MODS(k) (e->keyval == k && m == (GDK_CONTROL_MASK|GDK_SHIFT_MASK))
 static gboolean keypress(GtkWidget *w, GdkEventKey *e) {
@@ -152,6 +155,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    sprintf(default_path, "%s/.config/fterm", getenv("HOME"));
     gtk_init(&argc, &argv);
     wn = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     term = VTE_TERMINAL(vte_terminal_new());

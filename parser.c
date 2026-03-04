@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <ctype.h>
 #include "parser.h"
+
+extern char default_path[4096];
 
 struct _parser {
     FILE *file;
@@ -76,8 +79,11 @@ static inline struct value _token_to_value(struct _string tok) {
     return val;
 }
 
-static inline void _include_file(struct config *cfg, char *path) {
-    struct config inc = init_config(path);
+static inline void _include_file(struct config *cfg, const char *path) {
+    char cfg_path[4096] = {0};
+    if (access(path, F_OK) != 0) sprintf(cfg_path, "%s/%s", default_path, path);
+    else sprintf(cfg_path, "%s", path);
+    struct config inc = init_config(cfg_path);
     for (int i = 0; i < inc.nvars; ++i) {
         struct value v = inc.vars[i].value;
         // here hoping the compiler won't try to optimize this out lmfao
@@ -87,7 +93,7 @@ static inline void _include_file(struct config *cfg, char *path) {
     free_config(&inc);
 }
 
-struct config init_config(char *path) {
+struct config init_config(const char *path) {
     struct _parser parser = { .file = fopen(path, "r") };
     struct config cfg = {0};
     if (!parser.file) {

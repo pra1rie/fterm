@@ -24,7 +24,7 @@ struct config {
     int nvars;
 };
 
-struct config init_config(char *path);
+struct config init_config(const char *path);
 void free_config(struct config *cfg);
 void set_var(struct config *cfg, char *name, struct value val);
 struct value get_var(struct config *cfg, char *name);
