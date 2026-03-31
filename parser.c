@@ -89,14 +89,12 @@ static inline void _include_file(struct config *cfg, const char *path) {
     char cfg_path[4096] = {0};
     if (access(path, F_OK) != 0) sprintf(cfg_path, "%s/%s", default_path, path);
     else sprintf(cfg_path, "%s", path);
+    // don't free config so its values remain allocated
     struct config inc = init_config(cfg_path);
-    for (int i = 0; i < inc.nvars; ++i) {
-        struct value v = inc.vars[i].value;
-        // here hoping the compiler won't try to optimize this out lmfao
-        if (v.type == T_STR) v.as_str = strdup(inc.vars[i].value.as_str);
-        set_var(cfg, strdup(inc.vars[i].name), v);
-    }
-    free_config(&inc);
+    for (int i = 0; i < inc.nvars; ++i)
+        set_var(cfg, inc.vars[i].name, inc.vars[i].value);
+    for (int i = 0; i < inc.nkeys; ++i)
+        set_key(cfg, inc.keys[i].keyname, inc.keys[i].action);
 }
 
 struct config init_config(const char *path) {
@@ -123,7 +121,18 @@ struct config init_config(const char *path) {
         struct _string prv = tok;
         tok = _next_token(&parser);
         if (!tok.sz) break;
-        if (!strncmp(tok.ptr, "=", tok.sz)) {
+        if (!strncmp(prv.ptr, "bind", prv.sz)) {
+            struct _string action = _next_token(&parser);
+            if (action.sz) {
+                struct value key = _token_to_value(tok);
+                if (key.type == T_STR)
+                    set_key(&cfg, key.as_str, strndup(action.ptr, action.sz));
+                else
+                    fprintf(stderr, "error: bind expected a string key\n");
+            } else {
+                fprintf(stderr, "error: unexpected EOF\n");
+            }
+        } else if (!strncmp(tok.ptr, "=", tok.sz)) {
             tok = _next_token(&parser);
             if (tok.sz)
                 set_var(&cfg, strndup(prv.ptr, prv.sz), _token_to_value(tok));
@@ -141,7 +150,23 @@ void free_config(struct config *cfg) {
         if (cfg->vars[i].value.type == T_STR)
             free(cfg->vars[i].value.as_str);
     }
-    cfg->nvars = 0;
+    for (int i = 0; i < cfg->nkeys; ++i) {
+        free(cfg->keys[i].keyname);
+        free(cfg->keys[i].action);
+    }
+    cfg->nvars = cfg->nkeys = 0;
+}
+
+void set_key(struct config *cfg, char *name, char *action) {
+    for (int i = 0; i < cfg->nkeys; ++i) {
+        struct key *key = &cfg->keys[i];
+        if (!strcmp(key->keyname, name)) {
+            free(key->action);
+            key->action = action;
+            return;
+        }
+    }
+    cfg->keys[cfg->nkeys++] = (struct key) { name, action };
 }
 
 void set_var(struct config *cfg, char *name, struct value val) {

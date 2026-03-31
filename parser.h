@@ -14,6 +14,11 @@ struct value {
     };
 };
 
+struct key {
+    char *keyname;
+    char *action;
+};
+
 struct variable {
     char *name;
     struct value value;
@@ -21,11 +26,13 @@ struct variable {
 
 struct config {
     struct variable vars[VARIABLE_MAX];
-    int nvars;
+    struct key keys[VARIABLE_MAX];
+    int nvars, nkeys;
 };
 
 struct config init_config(const char *path);
 void free_config(struct config *cfg);
+void set_key(struct config *cfg, char *name, char *action);
 void set_var(struct config *cfg, char *name, struct value val);
 struct value get_var(struct config *cfg, char *name);
 struct value get_var_type(struct config *cfg, char *name, char type);

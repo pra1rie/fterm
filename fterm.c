@@ -5,14 +5,47 @@
 #include <pango/pango.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <ctype.h>
 #include "parser.h"
 
-#define FTERM_VERSION "fterm v0.5"
+#define FTERM_VERSION "fterm v0.6"
 
 char default_path[4096] = {0}; // $HOME/.config/fterm
+typedef void (*action_fn)(void);
+
+struct key_action {
+    guint mod, key;
+    action_fn action;
+};
+
+static void action_clipboard_copy(void);
+static void action_clipboard_paste(void);
+static void action_config_reload(void);
+static void action_zoom_increment(void);
+static void action_zoom_decrement(void);
+static void action_zoom_reset(void);
+static void action_alpha_increment(void);
+static void action_alpha_decrement(void);
+static void action_alpha_reset(void);
+
+static struct {
+    const char *name;
+    action_fn action;
+} keyname_mappings[] = {
+    { "clipboard_copy", action_clipboard_copy },
+    { "clipboard_paste", action_clipboard_paste },
+    { "config_reload", action_config_reload },
+    { "zoom_increment", action_zoom_increment },
+    { "zoom_decrement", action_zoom_decrement },
+    { "zoom_reset", action_zoom_reset },
+    { "alpha_increment", action_alpha_increment },
+    { "alpha_decrement", action_alpha_decrement },
+    { "alpha_reset", action_alpha_reset },
+};
 
 // uwurawrxd
-static int using_default = 0;
+static struct key_action keys[256];
+static int num_keys = 0, using_default = 0;
 static int width = 900, height = 500;
 static char *title = "Terminal";
 static char *shell = "/usr/bin/bash";
@@ -48,6 +81,49 @@ static inline void parse_colors(struct config *cfg) {
     }
 }
 
+static inline action_fn get_action_from_name(const char *name) {
+    for (int i = 0; i < sizeof(keyname_mappings)/sizeof(*keyname_mappings); ++i) {
+        if (!strcmp(name, keyname_mappings[i].name))
+            return keyname_mappings[i].action;
+    }
+    return NULL;
+}
+
+static inline guint parse_key_modifier(char *key, int *ret_offset) {
+    int mod = 0;
+    char *k = strtok(key, "+");
+    while (k) {
+        { // remove whitespaces around token
+            while (isspace(*k)) ++k;
+            int len = strlen(k);
+            while (isspace(k[len-1])) k[--len] = '\0';
+        }
+        *ret_offset = (k-key);
+        if (!strcasecmp(k, "control"))    mod |= GDK_CONTROL_MASK;
+        else if (!strcasecmp(k, "shift")) mod |= GDK_SHIFT_MASK;
+        else if (!strcasecmp(k, "alt"))   mod |= GDK_MOD1_MASK;
+        else return mod;
+        k = strtok(NULL, "+");
+    }
+    return mod;
+}
+
+static inline void parse_keys(struct config *cfg) {
+    num_keys = 0;
+    for (int i = 0; i < cfg->nkeys; ++i) {
+        struct key key = cfg->keys[i];
+        action_fn action = get_action_from_name(key.action);
+        if (!action) {
+            fprintf(stderr, "error: unknown action '%s'\n", key.action);
+            continue;
+        }
+        int offset = 0;
+        guint modifier = parse_key_modifier(key.keyname, &offset);
+        guint keycode = gdk_keyval_from_name(key.keyname+offset);
+        keys[num_keys++] = (struct key_action) { modifier, keycode, action };
+    }
+}
+
 static inline void lookup_config(void) {
     char config_path[STRING_MAX] = {0};
     if (config) sprintf(config_path, "%s", config);
@@ -66,6 +142,7 @@ static inline void lookup_config(void) {
         hide_cursor = GET_VAR_OR(&cfg, "hide_cursor", T_INT, hide_cursor).as_int;
         blink_cursor = GET_VAR_OR(&cfg, "blink_cursor", T_INT, blink_cursor).as_int;
         parse_colors(&cfg);
+        parse_keys(&cfg);
         free_config(&cfg);
         using_default = 0;
     } else {
@@ -106,31 +183,51 @@ static inline void reload_config(Bool is_reload) {
     set_alpha_scale(alpha);
 }
 
-// TODO: it'd be nice to be able to customize keybinds too
-#define MODN(k) (e->keyval == k && m == (GDK_CONTROL_MASK))
-#define MODS(k) (e->keyval == k && m == (GDK_CONTROL_MASK|GDK_SHIFT_MASK))
+static void action_clipboard_copy(void) {
+    vte_terminal_copy_clipboard_format(term, VTE_FORMAT_TEXT);
+}
+
+static void action_clipboard_paste(void) {
+    vte_terminal_paste_clipboard(term);
+}
+
+static void action_config_reload(void) {
+    reload_config(TRUE);
+}
+
+static void action_zoom_increment(void) {
+    vte_terminal_set_font_scale(term, scale += 0.1);
+}
+
+static void action_zoom_decrement(void) {
+    vte_terminal_set_font_scale(term, scale -= 0.1);
+}
+
+static void action_zoom_reset(void) {
+    vte_terminal_set_font_scale(term, scale = 1.0);
+}
+
+static void action_alpha_increment(void) {
+    set_alpha_scale(background.alpha + 0.05);
+}
+
+static void action_alpha_decrement(void) {
+    set_alpha_scale(background.alpha - 0.05);
+}
+
+static void action_alpha_reset(void) {
+    set_alpha_scale(alpha);
+}
+
 static gboolean keypress(GtkWidget *w, GdkEventKey *e) {
-    GdkModifierType m = e->state & gtk_accelerator_get_default_mod_mask();
-    if (MODS(GDK_KEY_C))
-        vte_terminal_copy_clipboard_format(term, VTE_FORMAT_TEXT);
-    else if (MODS(GDK_KEY_V))
-        vte_terminal_paste_clipboard(term);
-    else if (MODN(GDK_KEY_equal))
-        vte_terminal_set_font_scale(term, scale += 0.1);
-    else if (MODN(GDK_KEY_minus))
-        vte_terminal_set_font_scale(term, scale -= 0.1);
-    else if (MODN(GDK_KEY_0))
-        vte_terminal_set_font_scale(term, scale = 1.0);
-    else if (MODN(GDK_KEY_F5))
-        reload_config(TRUE);
-    else if (MODS(GDK_KEY_less))
-        set_alpha_scale(background.alpha - 0.05);
-    else if (MODS(GDK_KEY_greater))
-        set_alpha_scale(background.alpha + 0.05);
-    else if (MODS(GDK_KEY_question))
-        set_alpha_scale(alpha);
-    else return FALSE;
-    return TRUE;
+    GdkModifierType mod = e->state & gtk_accelerator_get_default_mod_mask();
+    for (int i = 0; i < num_keys; ++i) {
+        if (mod == keys[i].mod && e->keyval == keys[i].key) {
+            keys[i].action();
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
 static void usage(const char *prgname) {
