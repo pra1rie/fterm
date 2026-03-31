@@ -73,6 +73,12 @@ static inline struct value _token_to_value(struct _string tok) {
             val.type = T_REAL;
             val.as_real = strtod(tok.ptr, NULL);
         }
+    } else if (strcmp(tok.ptr, "true") == 0) {
+        val.type = T_INT;
+        val.as_int = 1;
+    } else if (strcmp(tok.ptr, "false") == 0) {
+        val.type = T_INT;
+        val.as_int = 0;
     } else {
         fprintf(stderr, "error: unknown value: %.*s\n", tok.sz, tok.ptr);
     }

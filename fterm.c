@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include "parser.h"
 
-#define FTERM_VERSION "fterm v0.4"
+#define FTERM_VERSION "fterm v0.5"
 
 char default_path[4096] = {0}; // $HOME/.config/fterm
 
@@ -17,7 +17,8 @@ static int width = 900, height = 500;
 static char *title = "Terminal";
 static char *shell = "/usr/bin/bash";
 static char *font = "monospace 15";
-static float alpha = 1.0;
+static float alpha = 1.0, cell_width = 1.0, cell_height = 1.0;
+static int hide_cursor = 0, blink_cursor = 0, bright_bold = 0;
 static char *cmd[32] = {0};
 static char *colors[16] = {
     "#000", "#800", "#080", "#880", "#008", "#808", "#088", "#ccc",
@@ -56,9 +57,14 @@ static inline void lookup_config(void) {
         width = GET_VAR_OR(&cfg, "width", T_INT, width).as_int;
         height = GET_VAR_OR(&cfg, "height", T_INT, height).as_int;
         alpha = GET_VAR_OR(&cfg, "alpha", T_REAL, alpha).as_real;
+        cell_width = GET_VAR_OR(&cfg, "cell_width", T_REAL, cell_width).as_real;
+        cell_height = GET_VAR_OR(&cfg, "cell_height", T_REAL, cell_height).as_real;
         title = strdup(GET_VAR_OR(&cfg, "title", T_STR, title).as_str);
         shell = strdup(GET_VAR_OR(&cfg, "shell", T_STR, shell).as_str);
         font = strdup(GET_VAR_OR(&cfg, "font", T_STR, font).as_str);
+        bright_bold = GET_VAR_OR(&cfg, "bright_bold", T_INT, bright_bold).as_int;
+        hide_cursor = GET_VAR_OR(&cfg, "hide_cursor", T_INT, hide_cursor).as_int;
+        blink_cursor = GET_VAR_OR(&cfg, "blink_cursor", T_INT, blink_cursor).as_int;
         parse_colors(&cfg);
         free_config(&cfg);
         using_default = 0;
@@ -86,10 +92,16 @@ static inline void reload_config(Bool is_reload) {
     scale = 1.0;
     gtk_window_set_default_size(GTK_WINDOW(wn), width, height);
     gtk_window_set_title(GTK_WINDOW(wn), title);
-    vte_terminal_set_font(term, pango_font_description_from_string(font));
+    PangoFontDescription *font_desc = pango_font_description_from_string(font);
+    vte_terminal_set_font(term, font_desc);
+    pango_font_description_free(font_desc);
     vte_terminal_set_font_scale(term, scale);
-    vte_terminal_set_bold_is_bright(term, TRUE);
-    vte_terminal_set_cursor_blink_mode(term, VTE_CURSOR_BLINK_OFF);
+    vte_terminal_set_bold_is_bright(term, bright_bold);
+    int blink = blink_cursor? VTE_CURSOR_BLINK_ON : VTE_CURSOR_BLINK_OFF;
+    vte_terminal_set_cursor_blink_mode(term, blink);
+    vte_terminal_set_mouse_autohide(term, hide_cursor);
+    vte_terminal_set_cell_width_scale(term, cell_width);
+    vte_terminal_set_cell_height_scale(term, cell_height);
     gtk_widget_set_visual(wn, gdk_screen_get_rgba_visual(gtk_widget_get_screen(wn)));
     set_alpha_scale(alpha);
 }
